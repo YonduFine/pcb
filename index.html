@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BOM 备料计算器（多板通用版）</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, sans-serif; background: #f2f4f7; padding-bottom: 60px; }
+  header { position: sticky; top: 0; background: #1f6feb; color: #fff; padding: 12px 16px; z-index: 10; }
+  header h1 { font-size: 17px; }
+  #progress { font-size: 13px; margin-top: 4px; }
+  .bar { height: 4px; background: rgba(255,255,255,.3); border-radius: 2px; margin-top: 6px; }
+  .bar > div { height: 100%; background: #7ee787; border-radius: 2px; width: 0; transition: width .3s; }
+  .sharebtn { position: absolute; right: 12px; top: 12px; background: #fff; color: #1f6feb; border: none; border-radius: 16px; padding: 6px 14px; font-size: 13px; font-weight: 600; }
+
+  .panel { background: #fff; margin: 10px; border-radius: 12px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .panel h2 { font-size: 14px; margin-bottom: 8px; color: #334; }
+  #drop { border: 2px dashed #9ab; border-radius: 10px; padding: 20px 10px; text-align: center; color: #789; font-size: 14px; cursor: pointer; }
+  #drop.drag { border-color: #1f6feb; background: #eef4ff; }
+  #fileInput { display: none; }
+
+  .pcb { display: flex; align-items: center; background: #f8fafc; border: 1px solid #e5eaf0; border-radius: 10px; padding: 8px 10px; margin-top: 8px; }
+  .pcb .pname { flex: 1; min-width: 0; }
+  .pcb .pname b { font-size: 13px; display: block; word-break: break-all; }
+  .pcb .pname small { color: #889; font-size: 11px; }
+  .pcb label { font-size: 11px; color: #889; margin-right: 4px; }
+  .pcb input { width: 70px; border: 1.5px solid #ccd; border-radius: 8px; padding: 6px 4px; font-size: 15px; text-align: center; }
+  .pcb .del { margin-left: 8px; border: none; background: #fde8e8; color: #e5484d; border-radius: 8px; padding: 6px 10px; font-size: 12px; }
+
+  .sum { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; font-size: 13px; }
+  .sum span { background: #f0f2f5; border-radius: 6px; padding: 4px 10px; color: #445; }
+  .sum b { color: #e5484d; }
+
+  .filters { display: flex; gap: 8px; margin: 10px 10px 0; }
+  .filters button { flex: 1; border: 1.5px solid #ccd; background: #fff; color: #445; border-radius: 18px; padding: 8px 0; font-size: 13px; font-weight: 600; }
+  .filters button.active { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+
+  .group-title { padding: 12px 14px 4px; font-size: 14px; color: #334; font-weight: 700; }
+  .group-title small { color: #99a; font-weight: 400; }
+  .item { display: flex; align-items: center; background: #fff; margin: 6px 10px; border-radius: 10px; padding: 10px 12px; box-shadow: 0 1px 2px rgba(0,0,0,.05); border-left: 4px solid #ccc; }
+  .item.ok   { border-left-color: #2da44e; background: #f0fff4; }
+  .item.lack { border-left-color: #e5484d; background: #fff5f5; }
+  .item.hidden { display: none; }
+  .info { flex: 1; min-width: 0; }
+  .name { font-size: 15px; font-weight: 600; }
+  .sub { margin-top: 4px; }
+  .fp { display: inline-block; background: #eef4ff; color: #1f6feb; border-radius: 5px; padding: 1px 7px; font-size: 11px; margin-bottom: 4px; }
+  .usage { font-size: 11px; color: #667; }
+  .usage-line { display: flex; justify-content: space-between; align-items: center; padding: 2px 6px; border-radius: 4px; }
+  .usage-line:nth-child(odd) { background: #f7f9fb; }
+  .usage-line .un { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 75%; }
+  .usage-line .uq { font-weight: 600; color: #334; white-space: nowrap; }
+  .mid { text-align: right; margin: 0 8px; white-space: nowrap; }
+  .mid .need { font-size: 15px; color: #e5484d; font-weight: 700; }
+  .mid .lack { font-size: 11px; color: #e5484d; font-weight: 600; }
+  .mid .lack.ok { color: #2da44e; }
+  .stockwrap { text-align: center; margin-right: 4px; }
+  .stockwrap label { display: block; font-size: 10px; color: #889; }
+  .stockwrap input { width: 66px; border: 1.5px solid #ccd; border-radius: 8px; padding: 6px 4px; font-size: 15px; text-align: center; }
+  .stockwrap input:focus { outline: none; border-color: #1f6feb; }
+  #reset { display: block; margin: 16px auto; background: #e5484d; color: #fff; border: none; border-radius: 20px; padding: 10px 24px; font-size: 14px; }
+  #emptyTip { text-align: center; color: #99a; padding: 30px 20px; font-size: 14px; }
+
+  #shareMask { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 99; align-items: center; justify-content: center; flex-direction: column; }
+  #shareImg { max-width: 92%; max-height: 68vh; border-radius: 8px; }
+  #shareMask .acts { margin-top: 14px; display: flex; gap: 10px; }
+  #shareMask button { border: none; border-radius: 20px; padding: 10px 20px; font-size: 14px; }
+  #btnDownload { background: #1f6feb; color: #fff; }
+  #btnShare2 { background: #2da44e; color: #fff; }
+  #btnClose { background: #fff; color: #334; }
+</style>
+</head>
+<body>
+<header>
+  <h1>BOM 备料计算器</h1>
+  <div id="progress">0 / 0</div>
+  <div class="bar"><div id="barfill"></div></div>
+  <button class="sharebtn" id="btnShare">分享图片</button>
+</header>
+
+<div class="panel">
+  <h2>① 上传 BOM 文件（每个文件 = 一种 PCB）</h2>
+  <div id="drop">点击选择 或 拖拽 .xlsx / .xls / .csv 到此处<br><small>自动识别 Comment / Quantity / Footprint 列</small></div>
+  <input type="file" id="fileInput" multiple accept=".xlsx,.xls,.csv">
+  <div id="pcbList"></div>
+</div>
+
+<div class="panel">
+  <h2>② 汇总统计</h2>
+  <div class="sum" id="sumPanel" style="display:none">
+    <span>PCB 种类：<b id="pcbCount">0</b></span>
+    <span>元件种类：<b id="kindCount">0</b></span>
+    <span>元件总需求：<b id="pieceCount">0</b></span>
+    <span>缺料种类：<b id="lackCount">0</b></span>
+  </div>
+</div>
+
+<div class="filters">
+  <button data-f="all" class="active">全部</button>
+  <button data-f="lack">仅缺料</button>
+  <button data-f="ok">仅充足</button>
+  <button data-f="none">未录入</button>
+</div>
+
+<div id="list"></div>
+<div id="emptyTip">请先上传 BOM 文件，并为每种 PCB 输入生产数量</div>
+<button id="reset">清空全部数据</button>
+
+<div id="shareMask">
+  <img id="shareImg" alt="BOM 汇总图">
+  <div class="acts">
+    <button id="btnDownload">下载图片</button>
+    <button id="btnShare2">系统分享</button>
+    <button id="btnClose">关闭</button>
+  </div>
+</div>
+
+<script>
+var pcbs = [];
+var pcbSeq = 0;
+var curFilter = 'all';
+var curMerged = {};   // 供分享图使用
+var curStock = {};    // 当前库存快照
+var fileInput = document.getElementById('fileInput');
+var drop = document.getElementById('drop');
+
+drop.addEventListener('click', function(){ fileInput.click(); });
+drop.addEventListener('dragover', function(e){ e.preventDefault(); drop.classList.add('drag'); });
+drop.addEventListener('dragleave', function(){ drop.classList.remove('drag'); });
+drop.addEventListener('drop', function(e){ e.preventDefault(); drop.classList.remove('drag'); handleFiles(e.dataTransfer.files); });
+fileInput.addEventListener('change', function(){ handleFiles(this.files); this.value=''; });
+
+// ---------- 解析 ----------
+function handleFiles(fileList) {
+  Array.prototype.forEach.call(fileList, function(f) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        var wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+        var ws = wb.Sheets[wb.SheetNames[0]];
+        var rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+        var parsed = parseRows(rows);
+        if (parsed.length) {
+          pcbs.push({ id: 'p' + (pcbSeq++), name: f.name.replace(/\.(xlsx|xls|csv)$/i, ''), count: 1, rows: parsed });
+          renderPcbList(); rebuild();
+        }
+      } catch(err) { alert('文件解析失败: ' + f.name); }
+    };
+    reader.readAsArrayBuffer(f);
+  });
+}
+
+function parseRows(rows) {
+  if (!rows.length) return [];
+  var head = rows[0].map(function(s){ return String(s).trim().toLowerCase(); });
+  var ci = { name: -1, qty: -1, fp: -1 };
+  head.forEach(function(h, i) {
+    if (h.indexOf('comment') >= 0 || h.indexOf('value') >= 0) ci.name = i;
+    if (h.indexOf('quant') >= 0 || h.indexOf('数量') >= 0) ci.qty = i;
+    if (h.indexOf('footprint') >= 0 || h.indexOf('封装') >= 0) ci.fp = i;
+  });
+  if (ci.qty < 0) ci.qty = 1;
+  if (ci.name < 0) ci.name = 2;
+  var out = [];
+  rows.slice(1).forEach(function(r) {
+    var name = String(r[ci.name] || '').trim();
+    var qty = parseInt(r[ci.qty], 10) || 0;
+    var fp = ci.fp >= 0 ? String(r[ci.fp] || '').trim() : '';
+    if (name && qty > 0) out.push({ name: name, qty: qty, fp: fp });
+  });
+  return out;
+}
+
+function renderPcbList() {
+  document.getElementById('pcbList').innerHTML = pcbs.map(function(p) {
+    return '<div class="pcb">' +
+      '<div class="pname"><b>' + esc(p.name) + '</b><small>' + p.rows.length + ' 种元件</small></div>' +
+      '<label>生产数量</label><input type="number" min="0" value="' + p.count + '" data-id="' + p.id + '">' +
+      '<button class="del" data-del="' + p.id + '">删除</button></div>';
+  }).join('');
+  document.querySelectorAll('#pcbList input').forEach(function(inp) {
+    inp.addEventListener('input', function() {
+      var p = pcbs.find(function(x){ return x.id === inp.dataset.id; });
+      if (p) { p.count = parseInt(inp.value, 10) || 0; rebuild(); }
+    });
+  });
+  document.querySelectorAll('#pcbList .del').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      pcbs = pcbs.filter(function(x){ return x.id !== btn.dataset.del; });
+      renderPcbList(); rebuild();
+    });
+  });
+}
+
+// ---------- 数值解析（仅用于排序） ----------
+function parseVal(s) {
+  var m = String(s).toUpperCase().replace(/\s+/g, '').match(/^([\d.]+)\s*([KMGPNUE]?)/);
+  if (!m) return null;
+  var v = parseFloat(m[1]);
+  if (isNaN(v)) return null;
+  var mult = { K: 1e3, M: 1e6, G: 1e9, P: 1e-12, N: 1e-9, U: 1e-6 }[m[2]] || 1;
+  return v * mult;
+}
+
+// ---------- 分类 ----------
+function classifyItem(name, fp) {
+  var f = (fp || '').toUpperCase();
+  var v = name.toUpperCase();
+  if (/^L\d/.test(f) || /BEAD/i.test(v)) return '磁珠 / 电感';
+  if (/CRYSTAL/i.test(f) || /MHZ/i.test(v)) return '晶振';
+  if (/^C\d/.test(f)) return '电容';
+  if (/^R\d/.test(f)) return '电阻';
+  if (/TLC|TL0|SGM|AD\d|STM|74HC|CJ431|1N41/.test(v)) return 'IC / 半导体';
+  if (/^\d/.test(v)) {
+    if (/^(SO|SOP|SOIC|MSOP|SC70|SOT|QFP|LQFP|TSSOP|QFN|TO)/.test(f)) return 'IC / 半导体';
+    return f.charAt(0) === 'C' ? '电容' : '电阻';
+  }
+  return '其他';
+}
+
+// ---------- 汇总 ----------
+function rebuild() {
+  var merged = {};
+  pcbs.forEach(function(p) {
+    p.rows.forEach(function(r) {
+      var k = r.name.trim().toUpperCase().replace(/\s+/g, '');
+      if (!merged[k]) merged[k] = { name: r.name, fp: '', total: 0, detail: [] };
+      merged[k].total += r.qty * p.count;
+      merged[k].detail.push({ pcb: p.name, qty: r.qty, count: p.count, sub: r.qty * p.count });
+      if (r.fp && !merged[k].fp) merged[k].fp = r.fp;
+    });
+  });
+  curMerged = merged;
+  render(merged);
+}
+
+function render(merged) {
+  var list = document.getElementById('list');
+  var empty = document.getElementById('emptyTip');
+  list.innerHTML = '';
+  var keys = Object.keys(merged);
+  if (!keys.length) { empty.style.display = 'block'; empty.textContent = '未解析到有效元件'; return; }
+  empty.style.display = 'none';
+
+  var saved = {};
+  try { saved = JSON.parse(localStorage.getItem('bomStock') || '{}'); } catch(e) {}
+  curStock = saved;
+
+  var groups = {};
+  keys.forEach(function(k) {
+    var g = classifyItem(merged[k].name, merged[k].fp);
+    (groups[g] = groups[g] || []).push(k);
+  });
+  var order = ['电阻', '电容', '磁珠 / 电感', '晶振', 'IC / 半导体', '其他'];
+
+  order.forEach(function(g) {
+    if (!groups[g]) return;
+    groups[g].sort(function(a, b) {
+      var va = parseVal(merged[a].name), vb = parseVal(merged[b].name);
+      if (va !== null && vb !== null && va !== vb) return va - vb;
+      return merged[b].total - merged[a].total;
+    });
+
+    var t = document.createElement('div');
+    t.className = 'group-title';
+    t.innerHTML = esc(g) + ' <small>' + groups[g].length + ' 种</small>';
+    list.appendChild(t);
+
+    groups[g].forEach(function(k) {
+      var m = merged[k];
+      var stock = saved.hasOwnProperty(k) ? saved[k] : '';
+      var state = getState(stock, m.total);
+
+      var usageLines = m.detail.map(function(d) {
+        var extra = d.count > 1 ? ' (' + d.qty + '×' + d.count + '板)' : '';
+        return '<div class="usage-line"><span class="un">📄 ' + esc(d.pcb) + extra + '</span>' +
+               '<span class="uq">×' + d.sub + '</span></div>';
+      }).join('');
+      var fpHtml = m.fp ? '<span class="fp">' + esc(m.fp) + '</span>' : '';
+
+      // 元件名保持原样显示
+      var div = document.createElement('div');
+      div.className = 'item' + (state === 'ok' ? ' ok' : state === 'lack' ? ' lack' : '');
+      div.dataset.state = state;
+      div.dataset.key = k;
+      div.innerHTML =
+        '<div class="info"><div class="name">' + esc(m.name) + '</div>' +
+        '<div class="sub">' + fpHtml + '<div class="usage">' + usageLines + '</div></div></div>' +
+        '<div class="mid"><div class="need">需 ' + m.total + '</div><div class="lack"></div></div>' +
+        '<div class="stockwrap"><label>现有库存</label><input type="number" min="0" value="' + stock + '"></div>';
+
+      var input = div.querySelector('input');
+      input.addEventListener('input', function() {
+        saved[k] = input.value;
+        curStock = saved;
+        try { localStorage.setItem('bomStock', JSON.stringify(saved)); } catch(e) {}
+        updateRow(div, m, input.value);
+        applyFilter(div);
+        updateSummary();
+      });
+      updateRow(div, m, input.value);
+      applyFilter(div);
+      list.appendChild(div);
+    });
+  });
+  updateSummary();
+}
+
+function getState(stockVal, need) {
+  var s = parseInt(stockVal, 10);
+  if (stockVal === '' || isNaN(s)) return 'none';
+  return s >= need ? 'ok' : 'lack';
+}
+
+function updateRow(div, m, stockVal) {
+  var lack = div.querySelector('.lack');
+  var st = getState(stockVal, m.total);
+  div.className = 'item';
+  if (st === 'none') { lack.textContent = '未输入库存'; lack.className = 'lack'; }
+  else if (st === 'ok') { div.classList.add('ok'); lack.textContent = '✓ 充足 (余 ' + (parseInt(stockVal,10) - m.total) + ')'; lack.className = 'lack ok'; }
+  else { div.classList.add('lack'); lack.textContent = '缺 ' + (m.total - parseInt(stockVal,10)) + ' 件'; lack.className = 'lack'; }
+  div.dataset.state = st;
+}
+
+// ---------- 筛选 ----------
+function applyFilter(div) {
+  var show = curFilter === 'all' || div.dataset.state === curFilter;
+  div.classList.toggle('hidden', !show);
+}
+document.querySelectorAll('.filters button').forEach(function(b) {
+  b.addEventListener('click', function() {
+    document.querySelectorAll('.filters button').forEach(function(x){ x.classList.remove('active'); });
+    b.classList.add('active');
+    curFilter = b.dataset.f;
+    document.querySelectorAll('#list .item').forEach(applyFilter);
+  });
+});
+
+function updateSummary() {
+  var kinds = 0, pieces = 0, lacks = 0;
+  document.querySelectorAll('#list .item').forEach(function(d) {
+    kinds++;
+    pieces += parseInt(d.querySelector('.need').textContent.replace(/\D/g, ''), 10) || 0;
+    if (d.dataset.state === 'lack') lacks++;
+  });
+  var sp = document.getElementById('sumPanel');
+  if (!kinds) { sp.style.display = 'none'; return; }
+  sp.style.display = 'flex';
+  document.getElementById('pcbCount').textContent = pcbs.length;
+  document.getElementById('kindCount').textContent = kinds;
+  document.getElementById('pieceCount').textContent = pieces;
+  document.getElementById('lackCount').textContent = lacks;
+  document.getElementById('progress').textContent = '库存充足 ' + (kinds - lacks) + ' / ' + kinds + ' 种';
+  document.getElementById('barfill').style.width = (kinds ? (kinds - lacks) / kinds * 100 : 0) + '%';
+}
+
+function esc(s) { return String(s).replace(/[<>&"]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]; }); }
+
+// ---------- 分享图片（纯 Canvas 绘制，无外部库） ----------
+var shareDataUrl = '';
+document.getElementById('btnShare').addEventListener('click', function() {
+  var keys = Object.keys(curMerged);
+  if (!keys.length) { alert('请先上传 BOM 文件'); return; }
+  this.textContent = '生成中…';
+  var self = this;
+  setTimeout(function() {
+    shareDataUrl = drawSummaryImage();
+    document.getElementById('shareImg').src = shareDataUrl;
+    document.getElementById('shareMask').style.display = 'flex';
+    self.textContent = '分享图片';
+  }, 30);
+});
+
+// 纯 canvas 绘制汇总长图
+function drawSummaryImage() {
+  var scale = 2, W = 720, pad = 30;
+  var lines = [];
+
+  // 标题区
+  lines.push({ type: 'title', text: 'BOM 备料汇总' });
+  lines.push({ type: 'date', text: '生成时间: ' + new Date().toLocaleString('zh-CN') });
+
+  // 各 PCB 概览
+  lines.push({ type: 'sub', text: '板卡清单' });
+  pcbs.forEach(function(p) {
+    lines.push({ type: 'plain', text: '• ' + p.name + '  × ' + p.count + ' 板 (' + p.rows.length + '种)' });
+  });
+
+  // 元件分组
+  var groups = {};
+  Object.keys(curMerged).forEach(function(k) {
+    var m = curMerged[k];
+    var g = classifyItem(m.name, m.fp);
+    (groups[g] = groups[g] || []).push(k);
+  });
+  var order = ['电阻', '电容', '磁珠 / 电感', '晶振', 'IC / 半导体', '其他'];
+  var stats = { kinds: 0, lack: 0, ok: 0, none: 0 };
+
+  order.forEach(function(g) {
+    if (!groups[g]) return;
+    groups[g].sort(function(a, b) {
+      var va = parseVal(curMerged[a].name), vb = parseVal(curMerged[b].name);
+      if (va !== null && vb !== null && va !== vb) return va - vb;
+      return curMerged[b].total - curMerged[a].total;
+    });
+    lines.push({ type: 'sub', text: g + '（' + groups[g].length + ' 种）' });
+    groups[g].forEach(function(k) {
+      var m = curMerged[k];
+      var st = getState(curStock[k] || '', m.total);
+      stats.kinds++;
+      if (st === 'lack') stats.lack++;
+      else if (st === 'ok') stats.ok++;
+      else stats.none++;
+      var stockTxt = st === 'ok' ? '库存' + curStock[k] + ' 余' + (curStock[k] - m.total)
+                   : st === 'lack' ? '库存' + (curStock[k]||0) + ' 缺' + (m.total - (curStock[k]||0))
+                   : '未录入库存';
+      lines.push({ type: 'row', name: m.name, fp: m.fp, total: m.total, stock: stockTxt, state: st });
+    });
+  });
+
+  // 统计
+  lines.push({ type: 'sub', text: '汇总' });
+  lines.push({ type: 'plain', text: '共 ' + stats.kinds + ' 种 ｜ 缺料 ' + stats.lack + ' 种 ｜ 充足 ' + stats.ok + ' 种 ｜ 未录入 ' + stats.none + ' 种' });
+
+  // 计算高度
+  var rowH = 34, subH = 40, plainH = 26, titleH = 50;
+  var H = pad * 2;
+  lines.forEach(function(l) {
+    if (l.type === 'title') H += titleH;
+    else if (l.type === 'sub') H += subH;
+    else if (l.type === 'row') H += rowH;
+    else H += plainH;
+  });
+
+  var canvas = document.createElement('canvas');
+  canvas.width = W * scale;
+  canvas.height = H * scale;
+  var ctx = canvas.getContext('2d');
+  ctx.scale(scale, scale);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, W, H);
+
+  var y = pad;
+  lines.forEach(function(l) {
+    if (l.type === 'title') {
+      ctx.fillStyle = '#1f6feb';
+      ctx.fillRect(0, y - 10, W, 3);
+      ctx.fillStyle = '#1f2937';
+      ctx.font = 'bold 26px sans-serif';
+      ctx.fillText(l.text, pad, y + 22);
+      y += titleH;
+    } else if (l.type === 'date') {
+      ctx.fillStyle = '#99a';
+      ctx.font = '13px sans-serif';
+      ctx.fillText(l.text, pad, y + 12);
+      y += plainH + 6;
+    } else if (l.type === 'sub') {
+      ctx.fillStyle = '#1f6feb';
+      ctx.font = 'bold 17px sans-serif';
+      ctx.fillText('▎' + l.text, pad, y + 14);
+      y += subH;
+    } else if (l.type === 'plain') {
+      ctx.fillStyle = '#445';
+      ctx.font = '14px sans-serif';
+      ctx.fillText(clip(ctx, l.text, W - pad * 2), pad, y + 12);
+      y += plainH;
+    } else if (l.type === 'row') {
+      // 状态色块
+      if (l.state === 'lack') { ctx.fillStyle = '#fde8e8'; ctx.fillRect(pad - 6, y - 2, W - pad * 2 + 12, rowH - 6); }
+      else if (l.state === 'ok') { ctx.fillStyle = '#f0fff4'; ctx.fillRect(pad - 6, y - 2, W - pad * 2 + 12, rowH - 6); }
+      ctx.fillStyle = l.state === 'ok' ? '#2da44e' : l.state === 'lack' ? '#e5484d' : '#334';
+      ctx.beginPath(); ctx.arc(pad - 1, y + rowH / 2 - 6, 5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#1f2937';
+      ctx.font = 'bold 15px sans-serif';
+      var nameTxt = clip(ctx, l.name + (l.fp ? '  [' + l.fp + ']' : ''), 380);
+      ctx.fillText(nameTxt, pad + 14, y + 12);
+      ctx.font = '12px sans-serif';
+      ctx.fillStyle = '#889';
+      ctx.fillText(clip(ctx, l.stock, 300), pad + 14, y + 27);
+      ctx.fillStyle = '#e5484d';
+      ctx.font = 'bold 16px sans-serif';
+      var needTxt = '需 ' + l.total;
+      ctx.fillText(needTxt, W - pad - ctx.measureText(needTxt).width, y + 20);
+      y += rowH;
+    }
+  });
+  return canvas.toDataURL('image/png');
+}
+
+function clip(ctx, text, maxW) {
+  if (ctx.measureText(text).width <= maxW) return text;
+  while (text.length > 1 && ctx.measureText(text + '…').width > maxW) text = text.slice(0, -1);
+  return text + '…';
+}
+
+document.getElementById('btnDownload').addEventListener('click', function() {
+  if (!shareDataUrl) return;
+  var a = document.createElement('a');
+  a.href = shareDataUrl;
+  a.download = 'BOM备料汇总_' + new Date().toISOString().slice(0,10) + '.png';
+  a.click();
+});
+document.getElementById('btnShare2').addEventListener('click', function() {
+  if (!shareDataUrl) return;
+  fetch(shareDataUrl).then(function(r){ return r.blob(); }).then(function(blob) {
+    var file = new File([blob], 'BOM备料汇总.png', { type: 'image/png' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      navigator.share({ files: [file], title: 'BOM 备料汇总' }).catch(function(){});
+    } else {
+      document.getElementById('btnDownload').click();
+    }
+  });
+});
+document.getElementById('btnClose').addEventListener('click', function() {
+  document.getElementById('shareMask').style.display = 'none';
+});
+
+document.getElementById('reset').addEventListener('click', function() {
+  pcbs = []; curMerged = {}; curStock = {};
+  try { localStorage.removeItem('bomStock'); } catch(e) {}
+  renderPcbList();
+  document.getElementById('list').innerHTML = '';
+  document.getElementById('sumPanel').style.display = 'none';
+  document.getElementById('emptyTip').style.display = 'block';
+  document.getElementById('emptyTip').textContent = '请先上传 BOM 文件';
+  document.getElementById('progress').textContent = '0 / 0';
+  document.getElementById('barfill').style.width = '0';
+});
+</script>
+</body>
+</html>
